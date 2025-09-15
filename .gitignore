@@ -4,4 +4,4 @@
 ./git
 ./vscodde
 
-*/__pycache__
+/__pycache__*
