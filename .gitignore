@@ -1,7 +1,7 @@
 ./pdf/Faster Adaptive Federated Learning.pdf
 ./pdf/Scalable Diffusion Models with Transformers.pdf
 
-./git
-./vscodde
+.git/
+.vscode/
 
-/__pycache__*
+**/__pycache__/
