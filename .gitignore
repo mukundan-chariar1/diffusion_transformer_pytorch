@@ -5,3 +5,5 @@ pdf/Scalable Diffusion Models with Transformers.pdf
 .vscode/
 
 **/__pycache__/
+
+data/*
