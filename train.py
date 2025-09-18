@@ -1,0 +1,215 @@
+import torch
+import torchvision
+
+from tqdm import tqdm
+
+from dataloader import *
+from diffusion import *
+from transformer import *
+from utils import *
+
+@torch.enable_grad()
+def train_via_epoch(
+        model: nn.Module,
+        train_dataset: torch.utils.data.Dataset,
+        device = 'cuda',
+        plot_freq: int = 100,
+
+        optimizer_name: str = 'Adam',
+        optimizer_config: dict = dict(),
+        lr_scheduler_name: Union[str, None] = None,
+        lr_scheduler_config: dict = dict(),
+
+        epochs: int = 5000,
+        batch_size: int = 32,
+        ):
+
+    model.train().to(device)
+    
+    tracker = Diffusion_Tracker(
+        n_iters = epochs, 
+        plot_freq = plot_freq,
+        )
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    optimizer: torch.optim.Optimizer = torch.optim.__getattribute__(optimizer_name)(model.parameters(), **optimizer_config)
+    if lr_scheduler_name is not None:
+        lr_scheduler: torch.optim.lr_scheduler._LRScheduler = torch.optim.lr_scheduler.__getattribute__(lr_scheduler_name)(optimizer, **lr_scheduler_config)
+
+    iter_pbar = tqdm(range(epochs), desc='Iters', unit='iter', leave=True)
+
+    for epoch in range(epochs):
+        loss=train_one_epoch(train_loader, model, optimizer, lr_scheduler)
+
+        # ==================== Logging ====================
+        iter_pbar.update(1)
+        iter_pbar.set_postfix_str(f'loss: {loss.item():.6f}')
+        if epoch % plot_freq == 0:
+            gen_samples = model.generate(1)[-1]
+            tracker.get_samples(gen_samples)
+        tracker.update(loss.item())
+    # import pdb; pdb.set_trace()
+
+def train_one_epoch(train_loader, model, optimizer, lr_scheduler=None, device='cuda'):
+    for x in train_loader:
+        model.train()
+
+        x = x.to(device)
+        
+        # sample a random diffusion step for each sample in the batch
+        t=torch.randint(0, model.diffusion.T, (x.shape[0],), device=device)
+
+        # forward diffusion
+        x_t, eps_q=model.diffusion.forward(x, t)
+
+        # model's forward pass
+        eps_theta=model(x_t, t)
+
+        # calculate the loss
+        loss = F.mse_loss(eps_theta, eps_q)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if type(lr_scheduler).__name__ == 'ReduceLROnPlateau':
+            lr_scheduler.step(loss.item())
+        elif type(lr_scheduler).__name__ is not None:
+            lr_scheduler.step()
+        
+    return loss
+    
+@torch.enable_grad()
+def train_via_iter(
+        model: nn.Module,
+        train_dataset: torch.utils.data.Dataset,
+        device = 'cuda',
+        plot_freq: int = 100,
+
+        optimizer_name: str = 'Adam',
+        optimizer_config: dict = dict(),
+        lr_scheduler_name: Union[str, None] = None,
+        lr_scheduler_config: dict = dict(),
+
+        n_iters: int = 5000,
+        batch_size: int = 32,
+        ):
+
+    model.train().to(device)
+    
+    tracker = Diffusion_Tracker(
+        n_iters = n_iters, 
+        plot_freq = plot_freq,
+        )
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    optimizer: torch.optim.Optimizer = torch.optim.__getattribute__(optimizer_name)(model.parameters(), **optimizer_config)
+    if lr_scheduler_name is not None:
+        lr_scheduler: torch.optim.lr_scheduler._LRScheduler = torch.optim.lr_scheduler.__getattribute__(lr_scheduler_name)(optimizer, **lr_scheduler_config)
+
+    iter_pbar = tqdm(range(n_iters), desc='Iters', unit='iter', leave=True)
+    iters=0
+
+    while iters<n_iters:
+        for x in train_loader:
+            model.train()
+
+            x = x.to(device)
+            
+            # sample a random diffusion step for each sample in the batch
+            t=torch.randint(0, model.diffusion.T, (x.shape[0],), device=device)
+
+            # forward diffusion
+            x_t, eps_q=model.diffusion.forward(x, t)
+
+            # model's forward pass
+            eps_theta=model(x_t, t)
+
+            # calculate the loss
+            loss = F.mse_loss(eps_theta, eps_q)
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+        
+            if lr_scheduler_name == 'ReduceLROnPlateau':
+                lr_scheduler.step(loss.item())
+            elif lr_scheduler_name is not None:
+                lr_scheduler.step()
+
+            # ==================== Logging ====================
+            iters += 1
+            iter_pbar.update(1)
+            iter_pbar.set_postfix_str(f'loss: {loss.item():.6f}')
+            if iters % plot_freq == 0:
+                gen_samples = model.generate(1)[-1]
+                tracker.get_samples(gen_samples)
+            tracker.update(loss.item())
+            if iters >= n_iters:
+                break
+                
+if __name__=="__main__":
+    DATA_DIR    = "data"  
+    
+    # train_dataset_unnormalized   = ImageDataset(DATA_DIR, 
+    #                                             transforms = torchvision.transforms.Compose([
+    #                                                     torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
+    #                                                     torchvision.transforms.ToTensor(),
+    #     ]))
+    
+    # mean, std=getMeanStd(train_dataset_unnormalized)
+    
+    mean=torch.tensor([0.4437, 0.4710, 0.4613])         # calculated from above function call
+    std=torch.tensor([0.2680, 0.2537, 0.2975])          # calculated from above function call
+    
+    img_size=(256, 256)
+
+    train_transforms = torchvision.transforms.Compose([
+        torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize([0.5]*3, [0.5]*3)
+        ])
+
+    train_dataset=ImageDataset(DATA_DIR, train_transforms)
+    
+    # Sanity check
+    sanity_check(ImageDataset(DATA_DIR, 
+                                   transforms = torchvision.transforms.Compose([
+                                          torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
+                                          torchvision.transforms.ToTensor(),])),)
+    
+    model = DiT(img_shape=img_size, 
+                patch_size=8,
+                n_layers=6, 
+                embed_dim=128, 
+                num_heads=4,
+                T=500, 
+                b_0 = 1e-4,
+                b_T = 2e-2,
+                t_embed_dim=128, 
+                hidden_units=128,
+                drop_rate=0.0, 
+                attn_drop_rate=0.0, 
+                drop_path_rate=0.0,
+                in_chans=3, 
+                learned_pos_embed=False, 
+                bias=False)
+    
+    train_via_iter(
+        model, 
+        train_dataset, 
+        n_iters=1000, 
+        plot_freq=100, 
+        optimizer_name='AdamW', 
+        optimizer_config={"lr": 1e-4, "weight_decay": 1e-6},
+        lr_scheduler_name = 'CosineAnnealingLR',
+        lr_scheduler_config = {"T_max": 5000},
+        )
+
+    gen_samples = model.generate(3)
+    plot_reverse_diffusion(model, gen_samples, n_steps=10)
+    
+    
+    import pdb; pdb.set_trace()

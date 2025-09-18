@@ -6,3 +6,5 @@ opencv-contrib-python
 
 matplotlib
 seaborn
+
+tqdm

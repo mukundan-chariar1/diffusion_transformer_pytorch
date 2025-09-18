@@ -8,10 +8,10 @@ class Diffusion(nn.Module):
 
     def __init__(
         self,
-        T: int = 1000, # total number of diffusion steps,
+        T: int = 1000,
         b_0: float = 1e-4,
         b_T: float = 2e-2,
-        n_data_dims: int = 3, # number of data dimensions. For example, colored image data has 3 (channel, height, width)
+        n_data_dims: int = 3,
         s: float=0.008,
         schedule_type: str='quadratic'
         ):
@@ -20,8 +20,6 @@ class Diffusion(nn.Module):
         self.s=s
 
         if schedule_type=='quadratic':
-            # calculate the 1D tensor for beta containing the values for each diffusion step
-            # using quadratic schedule
             beta = torch.linspace(b_0**0.5, b_T**0.5, T)**2
             beta=beta.view(T, *([1]*n_data_dims))
             alpha = 1. - beta
@@ -32,18 +30,13 @@ class Diffusion(nn.Module):
             alpha = alpha_bar[1:]/alpha_bar[:-1]
             beta = 1 - alpha
             alpha_bar = alpha_bar[1:]
+        elif schedule_type=="linear":
+            beta = torch.linspace(b_0, b_T, T)
+            beta=beta.view(T, *([1]*n_data_dims))
+            alpha = 1. - beta
+            alpha_bar = alpha.cumprod(dim=0)
         else: NotImplementedError
-
-        # based on n_data_dims, make the shape of beta broadcastable to batched data
         
-            
-        # calculate alpha and alpha_bar from beta
-        # both alpha and alpha_bar have T elements as well, one for each diffusion step
-        
-
-        # register the tensors as buffers to be saved with the model
-        # and to be moved to the right device when calling .to(device)
-        # You can access them like a normal attribute, like self.alpha
         self.register_buffer('alpha', alpha)
         self.register_buffer('alpha_bar', alpha_bar)
         self.register_buffer('beta', beta)
@@ -68,13 +61,10 @@ class Diffusion(nn.Module):
 
         alpha_bar_t=self.alpha_bar[t].view(-1, *([1]*(x_0.dim()-1)))
         
-        # mean of q(x_t|x_0, t)
         mu = torch.sqrt(alpha_bar_t)*x_0
 
-        # std of q(x_t|x_0, t)
         std = torch.sqrt(1-alpha_bar_t)
 
-        # sample from q using the reparameterization trick
         eps_q = torch.randn_like(x_0)
         x_t = mu+std*eps_q
 
@@ -83,9 +73,9 @@ class Diffusion(nn.Module):
     @torch.inference_mode()
     def reverse(
             self,
-            x_t: torch.FloatTensor, # (batch_size, *data_shape),
+            x_t: torch.FloatTensor,
             t: int,
-            eps_theta: torch.FloatTensor, # (batch_size, *data_shape),
+            eps_theta: torch.FloatTensor,
             ):
         """
         for a batch of corrupted data x_t and using the estimated noise eps_theta, 
@@ -101,14 +91,10 @@ class Diffusion(nn.Module):
         alpha_bar_t=self.alpha_bar[t].view(1, *([1]*(x_t.dim()-1)))
         beta_t=self.beta[t].view(1, *([1]*(x_t.dim()-1)))
 
-        # mean of p(x_{t-1}|x_t, t)
         mu = (1/torch.sqrt(alpha_t))*(x_t-(beta_t/torch.sqrt(1-alpha_bar_t))*eps_theta)
 
-        # std of p(x_{t-1}|x_t, t)
         std = torch.sqrt(beta_t)
 
-        # sample from p using the reparameterization trick
-        # NOTE: no noise is added at the final denoising step (t=0 -> eps_p=0)
         eps_p = torch.zeros_like(x_t) if t==0 else torch.randn_like(x_t)
         x_t_1 = mu+std*eps_p
 
