@@ -187,6 +187,13 @@ def train_VAE(
                 scheduler.step(running_avg_loss)
             elif lr_scheduler_name is not None:
                 scheduler.step()
+                
+            if iter % plot_freq == 0:
+                with torch.no_grad():
+                    # Generate new samples for visualization
+                    z_sample = torch.randn(24, *model.latent_size, device=device)
+                    gen_samples = model.decode(z_sample)
+                tracker.get_samples(gen_samples)
 
             iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}, L_prior: {prior_loss.item():.6f}, L_total: {loss.item():.6f}')
             iter_pbar.update(1)

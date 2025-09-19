@@ -379,6 +379,14 @@ class VAE_Tracker:
         self.plot_freq = plot_freq
         if self.plot_freq > 0:
             self.plot_results()
+            
+        # Sample visualization
+        self.samples_fig, self.samples_axes=plt.subplots(5, 8, figsize=(8, 5), sharex=True, sharey=True)
+        self.sample_axes=self.samples_axes.flat
+        self.samples=[]
+        for ax in self.sample_axes:
+            ax.axis('off')
+            self.samples.append(ax.imshow(np.zeros((32, 32)), cmap='gray', vmin=0, vmax=1))
 
     def plot_results(self):
         self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(12, 6), sharex=True)
@@ -438,6 +446,13 @@ class VAE_Tracker:
             self.ax2.autoscale_view()
             plt.tight_layout()
             self.fig.canvas.draw()
+            
+    def get_samples(
+            self, 
+            samples: torch.FloatTensor, 
+            ):
+        for sample, sample_img in zip(samples, self.samples):
+            sample_img.set_data(unnormalize(sample).clip(0, 1).detach().squeeze().cpu().numpy().transpose(1, 2, 0))
             
     def close(self):
         self.fig.show()
