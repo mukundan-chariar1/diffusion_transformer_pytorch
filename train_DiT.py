@@ -32,7 +32,7 @@ def train_via_epoch(
         plot_freq=plot_freq,
         )
 
-    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     optimizer: torch.optim.Optimizer=torch.optim.__getattribute__(optimizer_name)(model.parameters(), **optimizer_config)
     if lr_scheduler_name is not None:
