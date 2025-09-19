@@ -158,7 +158,7 @@ def train_VAE(
         )
 
     train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    optimizer = optim.__getattribute__(optimizer_name)(model.parameters(), **optimizer_config)
+    optimizer = optim.__getattribute__(optimizer_name)(**optimizer_config)
     if lr_scheduler_name is not None:
         scheduler = lr_scheduler.__getattribute__(lr_scheduler_name)(optimizer, **lr_scheduler_config)
 
@@ -178,9 +178,10 @@ def train_VAE(
             y_hat, mu, logvar = model(y)
             rec_loss = rec_loss_fn(y_hat, y)
             prior_loss = D_KL(mu, logvar)
-            loss = rec_loss+beta*prior_loss
+            # loss = rec_loss+beta*prior_loss
 
-            loss.backward()
+            loss=vae_loss(y_hat, y, mu, logvar, iter)
+            # loss.backward()
             optimizer.step()
 
             tracker.update(rec_loss.item(), prior_loss.item(), loss.item())

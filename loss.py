@@ -54,3 +54,15 @@ def D_KL(
     # kl=torch.mean(torch.sum((var+mu**2-1-logvar)/2, dim=-1))
 
     return kl
+
+# loss.py
+def vae_loss(x_recon, x_real, mu, logvar, step, kl_max=1e-2, warmup=10000, sigma=0.1):
+    # recon term ~ NLL of Gaussian with fixed variance
+    w_recon = 1.0 / (2.0 * (sigma ** 2))   # e.g. sigma=0.1 -> 50
+    recon = F.mse_loss(x_recon, x_real) * w_recon
+
+    # KL with linear warmup
+    beta = min(kl_max, kl_max * (step / warmup))
+    var  = torch.exp(logvar)
+    kl   = 0.5 * torch.mean(var + mu**2 - 1.0 - logvar)
+    return recon + beta * kl, dict(recon=recon.detach(), kl=(beta*kl).detach(), beta=beta)
