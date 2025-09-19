@@ -3,6 +3,8 @@ import torchvision
 from torch import nn, optim
 from torch.optim import lr_scheduler
 
+from torchsummary import summary
+
 from tqdm import tqdm
 
 from dataloader import *
@@ -130,12 +132,12 @@ def train_GAN(
             
 @torch.enable_grad()
 def train_VAE(
-        model: VAE,
+        model,
         train_dataset,
         device = 'cuda',
         plot_freq: int = 100,
 
-        beta: float = 1.,
+        beta_start: float = 1.,
         rec_loss_fn: nn.Module = nn.MSELoss(),
         optimizer_name: str = 'Adam',
         optimizer_config: dict = dict(),
@@ -146,8 +148,8 @@ def train_VAE(
         batch_size: int = 64,
         ):
 
-    assert beta >= 0
-
+    assert beta_start >= 0
+    
     model.train().to(device)
 
     tracker = VAE_Tracker(
@@ -164,7 +166,8 @@ def train_VAE(
     iter_pbar = tqdm(range(n_iters), desc='Iters', unit='iter', leave=True)
 
     while iter < n_iters:
-
+        # beta=min(beta_start, iter / 10_000)
+        beta=beta_start
         for y in train_loader:
 
             y = y.to(device)
@@ -207,7 +210,7 @@ def train_VAE(
 if __name__=="__main__":
     DATA_DIR="data"  
     
-    img_size=(256, 256)
+    img_size=(64, 64)
 
     train_transforms=torchvision.transforms.Compose([
         torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
@@ -223,7 +226,9 @@ if __name__=="__main__":
                                           torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),)
     
-    generator=VAE(img_shape=img_size, activation='ReLU', base=64, num_layers=3)
+    generator=VAE(img_shape=img_size, activation='ReLU', base=64, num_layers=2).to('cuda')
+    
+    summary(generator, (3, *img_size))
 
     import pdb; pdb.set_trace()
 

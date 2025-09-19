@@ -86,12 +86,14 @@ class LatentEncoder(nn.Module):
             ch //= 2
         
         self.body = nn.Sequential(*layers)
-        self.to_z = nn.Conv2d(ch, 2*z_ch, 1)
+        self.mu_net = nn.Conv2d(ch, z_ch, 1)
+        self.logvar_net = nn.Conv2d(ch, z_ch, 1)
         
         # self._init()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.to_z(self.body(x))
+        x=self.body(x)
+        return self.mu_net(x), self.logvar_net(x)
 
     def _init(self):
         for m in self.modules():
@@ -130,11 +132,14 @@ class LatentDecoder(nn.Module):
         dec += [nn.Conv2d(ch_schedule[-1], out_ch, kernel_size=3, padding=1)]
         self.body = nn.Sequential(*dec)
         
+        self.tanh=nn.Tanh()
+        
         # self._init()
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         x = self.from_z(z)
         x = self.body(x)
+        x=self.tanh(x)
         return x # [-1,1] if tanh, [0,1] if sigmoid
 
     def _init(self):
@@ -144,7 +149,7 @@ class LatentDecoder(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-class VAE(nn.Module):
+class ResNetVAE(nn.Module):
     def __init__(self, img_shape: tuple=(256, 256), latent_shape: tuple=(32, 32), in_channels: int=3, latent_channels: int=4, activation: str='ReLU', base: int=64, num_layers: int=2):
         super().__init__()
         self.img_shape=img_shape
@@ -158,8 +163,7 @@ class VAE(nn.Module):
         self.decoder=LatentDecoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
         
     def encode(self, x):
-        mu_logvar = self.encoder(x)
-        mu, logvar=torch.chunk(mu_logvar, 2, 1)
+        mu, logvar = self.encoder(x)
         return mu, logvar
     
     def decode(self, z):

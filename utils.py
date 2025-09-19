@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import PIL
 from typing import Union
 
+from IPython import get_ipython
+from IPython.display import display, clear_output
+
 def sanity_check(dataset):
     r, c=[5, 5]
     fig, ax=plt.subplots(r, c, figsize=(15, 15))
@@ -121,6 +124,11 @@ class Diffusion_Tracker:
             self.samples_fig.suptitle(f'Generated Samples at Iteration {self.iter}')
 
             self.fig.canvas.draw()
+            
+            if get_ipython() is not None:
+                clear_output(wait=True)
+                display(self.fig)
+                display(self.samples_fig)
 
     
     def get_samples(
@@ -238,6 +246,11 @@ class GAN_Tracker:
             self.samples_fig.suptitle(f'Generated Samples at Iteration {self.iter}')
 
             self.fig.canvas.draw()
+            
+            if get_ipython() is not None:
+                clear_output(wait=True)
+                display(self.fig)
+                display(self.samples_fig)
 
     
     def get_samples(
@@ -349,6 +362,11 @@ class VAEGAN_Tracker(GAN_Tracker):
             self.samples_fig.suptitle(f'Generated Samples at Iteration {self.iter}')
 
             self.fig.canvas.draw()
+            
+            if get_ipython() is not None:
+                clear_output(wait=True)
+                display(self.fig)
+                display(self.samples_fig)
 
     def get_samples(
             self, 
@@ -446,6 +464,11 @@ class VAE_Tracker:
             self.ax2.autoscale_view()
             plt.tight_layout()
             self.fig.canvas.draw()
+            
+            if get_ipython() is not None:
+                clear_output(wait=True)
+                display(self.fig)
+                display(self.samples_fig)
             
     def get_samples(
             self, 
