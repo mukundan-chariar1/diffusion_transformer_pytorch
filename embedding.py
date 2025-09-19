@@ -7,83 +7,60 @@ from torch.nn import functional as F
 import math
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, img_shape: Tuple, embed_dim: int, patch_size: int, num_patches: int, dropout: float, in_channels: int, learned_pos_embed: bool):
+    def __init__(self, img_shape: tuple, in_channels: int, embed_dim: int, patch_size: int):
         super().__init__()
-        self.patcher = nn.Sequential(
-        nn.Conv2d(
-        in_channels=in_channels,
-        out_channels=embed_dim,
-        kernel_size=patch_size, # assumes kernel to by square
-        stride=patch_size
-        ),
-        nn.Flatten(2))
+        self.patcher=nn.Sequential(nn.Conv2d(
+                                            in_channels=in_channels,
+                                            out_channels=embed_dim,
+                                            kernel_size=patch_size, # assumes kernel to by square
+                                            stride=patch_size
+                                            ),
+                                    nn.Flatten(2))
 
-        grid_size = (img_shape[0] // patch_size, img_shape[1] // patch_size)
-        num_patches = grid_size[0] * grid_size[1]
+        grid_size=(img_shape[0]//patch_size, img_shape[1]//patch_size)
+        self.num_patches=grid_size[0]*grid_size[1]
+        grid=torch.arange(grid_size[0])
+        grid_mesh=torch.meshgrid(grid, grid, indexing="ij")
+        grid_mesh=torch.stack(grid_mesh)
+        
+        grid_h=grid_mesh[0].reshape(-1)
+        grid_w=grid_mesh[1].reshape(-1)
+        
+        factor = 10000 ** ((torch.arange(
+                            start=0,
+                            end=embed_dim // 4) / (embed_dim // 4))
+                            )
+        
+        grid_h_emb = grid_h[:, None].repeat(1, embed_dim // 4) / factor
+        grid_h_emb = torch.cat([torch.sin(grid_h_emb), torch.cos(grid_h_emb)], dim=-1)
 
-        if learned_pos_embed:
-            self.pos_embed = nn.Parameter(torch.randn(1, num_patches, embed_dim))
-        else:
-            pe = sinusoidal_2d_pos_embed(embed_dim, *grid_size, cls=False)
-            self.register_buffer("pos_embed", pe, persistent=False)
-        self.dropout = nn.Dropout(p=dropout)
-
+        grid_w_emb = grid_w[:, None].repeat(1, embed_dim // 4) / factor
+        grid_w_emb = torch.cat([torch.sin(grid_w_emb), torch.cos(grid_w_emb)], dim=-1)
+        pos_emb = torch.cat([grid_h_emb, grid_w_emb], dim=-1)
+        
+        self.register_buffer("pos_emb", pos_emb)
+        
     def forward(self, x):
-        x = self.patcher(x).permute(0, 2, 1)
-        x = self.pos_embed + x
-        x = self.dropout(x)
+        x=self.patcher(x).permute(0, 2, 1)
+        x=self.pos_emb+x
         return x
 
-def sinusoidal_2d_pos_embed(embed_dim: int, H: int, W: int, *, cls: bool = False, device=None, dtype=None):
-    """
-    Returns [1, H*W(+1), D] 2D sin/cos PE. `embed_dim` must be divisible by 4.
-    """
-    if embed_dim % 4 != 0:
-        raise ValueError("embed_dim must be a multiple of 4 for 2D sincos PE.")
-    dtype = dtype or torch.float32
+def sinusoidal_time_embedding(t: torch.Tensor, dim: int, *, max_period: float=10000.0) -> torch.Tensor:
+    assert dim%2==0, "dim must be even"
+    factor = 10000 ** ((torch.arange(
+                                    start=0, end=dim // 2, dtype=torch.float32, device=t.device) / (dim // 2))
+                                    )
+    
+    t_emb = t[:, None].repeat(1, dim // 2) / factor
+    t_emb = torch.cat([torch.sin(t_emb), torch.cos(t_emb)], dim=-1)
 
-    dim_h = embed_dim // 2
-    dim_w = embed_dim // 2
-    pe_h = get_1d_sincos_pos_embed(dim_h, H)  # [H, dim_h]
-    pe_w = get_1d_sincos_pos_embed(dim_w, W)  # [W, dim_w]
-
-    rows = []
-    for i in range(H):
-        row = torch.cat((pe_h[i].unsqueeze(0).repeat(W, 1), pe_w), dim=1)  # [W, D]
-        rows.append(row)
-    pe = torch.stack(rows, dim=0)          # ✅ [H, W, D] (use stack, not torch.tensor([...]))
-    pe = pe.view(H * W, embed_dim)         # [H*W, D]
-
-    if cls:
-        cls_tok = torch.zeros(1, embed_dim, device=device, dtype=dtype)
-        pe = torch.cat([cls_tok, pe], dim=0)  # [H*W+1, D]
-    return pe.unsqueeze(0)
-
-
-def get_1d_sincos_pos_embed(dim, length):
-    position = torch.arange(length, dtype=torch.float32).unsqueeze(1)
-    div_term = torch.exp(torch.arange(0, dim, 2, dtype=torch.float32) * (-math.log(10000.0) / dim))
-    pe = torch.zeros(length, dim)
-    pe[:, 0::2] = torch.sin(position * div_term)
-    pe[:, 1::2] = torch.cos(position * div_term)
-    return pe
-
-def sinusoidal_time_embedding(t: torch.Tensor, dim: int, *, max_period: float = 10000.0) -> torch.Tensor:
-    assert dim % 2 == 0, "dim must be even"
-    t = t.float().unsqueeze(1)                    # (B,1)
-    half = dim // 2
-    # log-spaced frequencies
-    exponents = torch.arange(half, device=t.device, dtype=t.dtype) / half
-    freqs = torch.exp(-math.log(max_period) * exponents)  # (half,)
-    angles = t * freqs                                    # (B,half)
-    emb = torch.cat([angles.sin(), angles.cos()], dim=1)  # (B,dim)
-    return emb
+    return t_emb
 
 class SimpleTimeEmbedding(nn.Module):
     def __init__(self, T, t_embed_dim, embed_dim):
         super().__init__()
         self.embedding=nn.Embedding(T, t_embed_dim)
-        self.mlp = nn.Sequential(
+        self.mlp=nn.Sequential(
             nn.Linear(t_embed_dim, embed_dim),
             nn.SiLU(),
             nn.Linear(embed_dim, embed_dim),
@@ -94,12 +71,12 @@ class SimpleTimeEmbedding(nn.Module):
 class SinusoidalTimeEmbedding(nn.Module):
     def __init__(self, t_embed_dim: int, embed_dim: int):
         super().__init__()
-        self.t_embed_dim = t_embed_dim
-        self.mlp = nn.Sequential(
+        self.t_embed_dim=t_embed_dim
+        self.mlp=nn.Sequential(
             nn.Linear(t_embed_dim, embed_dim), 
             nn.SiLU(),
             nn.Linear(embed_dim, embed_dim)
         )
     def forward(self, t: torch.Tensor) -> torch.Tensor:
-        h = sinusoidal_time_embedding(t, self.t_embed_dim)  # (B, dim_t)
-        return self.mlp(h)                            # (B, out)
+        h=sinusoidal_time_embedding(t, self.t_embed_dim)
+        return self.mlp(h)

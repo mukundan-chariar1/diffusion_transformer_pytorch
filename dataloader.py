@@ -8,24 +8,18 @@ import matplotlib.pyplot as plt
 
 import os
 
-def getMeanStd(dataset, return_sums=False): #For test and verification
-    psum    = torch.tensor([0.0, 0.0, 0.0])
-    psum_sq = torch.tensor([0.0, 0.0, 0.0])
+def getMeanStd(dataset, return_sums=False):
+    psum=torch.tensor([0.0, 0.0, 0.0])
+    psum_sq=torch.tensor([0.0, 0.0, 0.0])
 
     for inputs in tqdm(dataset):
-        try: psum    += inputs.sum(axis=[1, 2])
-        except:
+        psum+=inputs.sum(axis=[1, 2])
+        psum_sq+=(inputs**2).sum(axis=[1, 2])
 
-
-            import pdb; pdb.set_trace()
-
-
-        psum_sq += (inputs ** 2).sum(axis=[1, 2])
-
-    count = dataset.__len__() * dataset[0].shape[1] * dataset[0].shape[2]
-    total_mean = psum / count
-    total_var  = (psum_sq / count) - (total_mean ** 2)
-    total_std  = torch.sqrt(total_var)
+    count=dataset.__len__()*dataset[0].shape[1]*dataset[0].shape[2]
+    total_mean=psum/count
+    total_var=(psum_sq/count)-(total_mean**2)
+    total_std=torch.sqrt(total_var)
 
     if return_sums: return psum, psum_sq, count
     else: return total_mean, total_std
@@ -33,11 +27,10 @@ def getMeanStd(dataset, return_sums=False): #For test and verification
 class ImageDataset(torch.utils.data.Dataset):
 
     def __init__(self, data_dir, transforms):
-        self.data_dir   = data_dir
-        self.transforms = transforms
+        self.data_dir=data_dir
+        self.transforms=transforms
 
-        # This one-liner basically generates a sorted list of full paths to each image in the test directory
-        self.img_paths  = list(map(lambda fname: os.path.join(self.data_dir, fname), sorted(os.listdir(self.data_dir))))
+        self.img_paths=list(map(lambda fname: os.path.join(self.data_dir, fname), sorted(os.listdir(self.data_dir))))
 
     def __len__(self):
         return len(self.img_paths)
@@ -47,10 +40,10 @@ class ImageDataset(torch.utils.data.Dataset):
     
     
 if __name__=="__main__":
-    DATA_DIR    = "data"  
+    DATA_DIR="data"  
     
-    # train_dataset_unnormalized   = ImageDataset(DATA_DIR, 
-    #                                             transforms = torchvision.transforms.Compose([
+    # train_dataset_unnormalized  =ImageDataset(DATA_DIR, 
+    #                                             transforms=torchvision.transforms.Compose([
     #                                                     torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
     #                                                     torchvision.transforms.ToTensor(),
     #     ]))
@@ -60,7 +53,7 @@ if __name__=="__main__":
     mean=torch.tensor([0.4437, 0.4710, 0.4613])         # calculated from above function call
     std=torch.tensor([0.2680, 0.2537, 0.2975])          # calculated from above function call
 
-    train_transforms = torchvision.transforms.Compose([
+    train_transforms=torchvision.transforms.Compose([
         torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize(mean, std)
@@ -69,25 +62,24 @@ if __name__=="__main__":
     train_dataset=ImageDataset(DATA_DIR, train_transforms)
     
     # Sanity check
-    
-    r, c    = [5, 5]
-    fig, ax = plt.subplots(r, c, figsize= (15, 15))
+    r, c=[5, 5]
+    fig, ax=plt.subplots(r, c, figsize= (15, 15))
 
-    k       = 0
-    dtl     = torch.utils.data.DataLoader(
-        dataset     = ImageDataset(DATA_DIR, 
-                                   transforms = torchvision.transforms.Compose([
+    k=0
+    dtl=torch.utils.data.DataLoader(
+        dataset=ImageDataset(DATA_DIR, 
+                                   transforms=torchvision.transforms.Compose([
                                           torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),
-        batch_size  = 64,
-        shuffle     = True)
+        batch_size=64,
+        shuffle=True)
 
     for data in dtl:
-        x = data
+        x=data
 
         for i in range(r):
             for j in range(c):
-                img = x[k].numpy().transpose(1, 2, 0)
+                img=x[k].numpy().transpose(1, 2, 0)
                 ax[i, j].imshow(img)
                 ax[i, j].axis('off')
                 k+=1

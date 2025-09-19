@@ -1,170 +1,227 @@
+from typing import Sequence
+import math
 import torch
-from torch import nn
+import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
 
-from typing import Sequence, Tuple
+from embedding import PatchEmbedding
 
 class ResBlock(nn.Module):
-
-    def __init__(self, in_channels, growth_factor):
+    def __init__(self, in_channels: int=64, out_channels: int=32, stride: int=1, activation: str='ReLU', batchnorm: bool=True):
         super().__init__()
-        self.conv1=nn.Sequential(nn.BatchNorm2d(in_channels),
-                                 nn.ReLU(),
-                                 nn.Conv2d(in_channels, 4*growth_factor, 1, 1, 0, bias=False))
+        act=nn.__getattribute__(activation)
+        self.batchnorm=batchnorm
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
+                               stride=stride, padding=1)
+        if self.batchnorm: self.bn1   = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
+                               stride=1, padding=1)
+        if self.batchnorm: self.bn2   = nn.BatchNorm2d(out_channels)
+        
+        self.act=act()
+        
+        if stride != 1 or in_channels != out_channels:
+            self.proj = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels),
+            )
+        else:
+            self.proj = nn.Identity()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        shortcut = self.proj(x)
 
-        self.conv2=nn.Sequential(nn.BatchNorm2d(4*growth_factor),
-                                 nn.ReLU(),
-                                 nn.Conv2d(4*growth_factor, growth_factor, 3, 1, 1, bias=False))
-    def forward(self, x):
-        out=x+self.conv2(self.conv1(x))
+        out = self.conv1(x)
+        if self.batchnorm: out = self.bn1(out)
+        out = self.act(out)
 
+        out = self.conv2(out)
+        if self.batchnorm: out = self.bn2(out)
+
+        out += shortcut
+        out = self.act(out)
         return out
-
-class Encoder(nn.Module):
-    """
-    Probabilistic encoder. Output: mu and logvar of q(z|x).
-    """
-    def __init__(
-            self,
-            input_size: int,
-            latent_size: int,
-            hidden_sizes: Sequence[int],
-            activation: str = 'ReLU',
-            ):
-        super().__init__()
-
-        act=nn.__getattribute__(activation)
-
-        layers=[nn.Linear(input_size, hidden_sizes[0])]
-        for in_size, out_size in zip(hidden_sizes[:-1], hidden_sizes[1:]):
-            layers.append(nn.Linear(in_size, out_size))
-            layers.append(act())
-            layers.append(nn.Dropout(p=0.2))
-
-        self.layers=nn.Sequential(*layers[:-2])
-        # self.layers=nn.Sequential(*layers[:-1])
-        # self.fc_mu=nn.Linear(hidden_sizes[-1], latent_size)
-        # self.fc_logvar=nn.Linear(hidden_sizes[-1], latent_size)
-
-        self.fc=nn.Linear(hidden_sizes[-1], latent_size*2)
-
-    def forward(
-            self, 
-            y: torch.FloatTensor, # shape (batch_size, input_size),
-            ) -> Tuple[torch.FloatTensor, torch.FloatTensor]: # mu and logvar of q(z|x), both of shape (batch_size, latent_size)
-        
-        # mu=self.fc_mu(self.layers(y))
-        # logvar=self.fc_logvar(self.layers(y))
-
-        mu_logvar=self.fc(self.layers(y))
-
-        mu, logvar=torch.chunk(mu_logvar, 2, -1)
-
-        return (mu, logvar)
     
-
-class Decoder(nn.Module):
-    """
-    Treat this as a normal decoder.
-    """
-    def __init__(
-            self,
-            latent_size: int,
-            output_size: int,
-            hidden_sizes: Sequence[int],
-            activation: str = 'ReLU',
-            ):
+class UpResBlock(nn.Module):
+    def __init__(self, in_channels: int=64, out_channels: int=32, activation: str='ReLU', batchnorm: bool=True):
         super().__init__()
-
+        self.batchnorm=batchnorm
         act=nn.__getattribute__(activation)
-
-        layers=[nn.Linear(latent_size, hidden_sizes[0])]
-        for in_size, out_size in zip(hidden_sizes[:-1], hidden_sizes[1:]):
-            layers.append(nn.Linear(in_size, out_size))
-            layers.append(act())
-            layers.append(nn.Dropout(p=0.2))
-
-        # layers=layers[:-2]
-        layers=layers[:-1]
-        layers.append(nn.Linear(hidden_sizes[-1], output_size))
-        self.layers=nn.Sequential(*layers)
-        self.latent_size=latent_size
-
-
-    def forward(
-            self, 
-            z: torch.FloatTensor, # shape (batch_size, latent_size),
-            ) -> torch.FloatTensor: # y_hat of shape (batch_size, output_size)
+        if self.batchnorm: self.bn1 = nn.BatchNorm2d(in_channels)
         
-        return self.layers(z)
+        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
+        if self.batchnorm: self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.skip = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
+        
+        self.act=act()
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        shortcut = self.skip(x)
+
+        out = self.deconv1(x)
+        if self.batchnorm: out = self.bn1(out)
+        out = self.act(out)
+
+        out = self.conv2(out)
+        if self.batchnorm: out = self.bn2(out)
+
+        out += shortcut
+        out = self.act(out)
+        return out
     
+class LatentEncoder(nn.Module):
+    def __init__(self, in_ch: int = 3, img_shape: tuple = (256, 256), base: int = 64, z_ch: int = 4, activation: str='ReLU', num_layers: int=2):
+        super().__init__()
+        act=nn.__getattribute__(activation)
+        ratio = img_shape[0] // 32
+        assert (ratio & (ratio - 1)) == 0, "img_shape/32 must be a power of 2"
+
+        layers = [nn.Conv2d(in_ch, base, 3, padding=1), act()]
+        ch = base
+        for _ in range(int(math.log2(ratio))):
+            layers += [
+                ResBlock(ch, ch//2, stride=2, activation=activation, batchnorm=True),
+                *[ResBlock(ch//2, ch//2, stride=1, activation=activation, batchnorm=True)]*num_layers,
+            ]
+            ch //= 2
+        
+        self.body = nn.Sequential(*layers)
+        self.to_z = nn.Conv2d(ch, 2*z_ch, 1)
+        
+        # self._init()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.to_z(self.body(x))
+
+    def _init(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+class LatentDecoder(nn.Module):
+    """
+    (B, z_ch, 32, 32) -> (B, C, H, W)
+    Mirrors the encoder with ConvTranspose2d for upsampling.
+    """
+    def __init__(self, out_ch: int = 3, img_shape: tuple = (256, 256), base: int = 64, z_ch: int = 4,
+                activation: str='ReLU', num_layers: int=2):
+        super().__init__()
+        act=nn.__getattribute__(activation)
+        ratio = img_shape[0] // 32
+
+        n_up = int(math.log2(ratio))
+        start_ch=base // (2 ** n_up)
+        ch_schedule=[start_ch//2]
+        ch_schedule.extend([start_ch * (2 ** i) for i in range(n_up)])
+        
+        self.from_z = nn.Sequential(nn.Conv2d(z_ch, ch_schedule[0], 1), act())
+
+        dec = []
+        for i in range(n_up):
+            c_in = ch_schedule[i]
+            c_out = ch_schedule[i + 1]
+            dec += [
+                UpResBlock(c_in, c_out, activation, batchnorm=False),
+                *[ResBlock(c_out, c_out, stride=1, activation=activation, batchnorm=False)]*num_layers
+            ]
+        # final RGB head
+        dec += [nn.Conv2d(ch_schedule[-1], out_ch, kernel_size=3, padding=1)]
+        self.body = nn.Sequential(*dec)
+        
+        # self._init()
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        x = self.from_z(z)
+        x = self.body(x)
+        return x # [-1,1] if tanh, [0,1] if sigmoid
+
+    def _init(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
 class VAE(nn.Module):
+    def __init__(self, img_shape: tuple=(256, 256), latent_shape: tuple=(32, 32), in_channels: int=3, latent_channels: int=4, activation: str='ReLU', base: int=64, num_layers: int=2):
+        super().__init__()
+        self.img_shape=img_shape
+        self.latent_shape=latent_shape
+        self.in_channels=in_channels
+        self.latent_channels=latent_channels
+        
+        self.latent_size=(self.latent_channels, *self.latent_shape)
+        
+        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        self.decoder=LatentDecoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        
+    def encode(self, x):
+        mu_logvar = self.encoder(x)
+        mu, logvar=torch.chunk(mu_logvar, 2, 1)
+        return mu, logvar
+    
+    def decode(self, z):
+        return self.decoder(z)
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decoder(z), mu, logvar
+
+    def generate(self, n_samples):
+        z = torch.randn(n_samples, *(self.latent_channels, *self.latent_shape))
+        return self.decoder(z)
+    
+class Discriminator(nn.Module):
 
     def __init__(
             self,
-            input_size: int,
-            latent_size: int,
-            hidden_sizes_encoder: Sequence[int],
-            hidden_sizes_decoder: Sequence[int],
-            activation: str = 'ReLU',
+            input_size: tuple=(256, 256),
+            in_channels: int=3,
+            patch_size: int=16,
+            hidden_sizes: Sequence[int]=[256, 128],
+            batchnorm: bool=True,
+            activation: str='ReLU',
             ):
         super().__init__()
-        """
-        use the encoder and decoder classes you defined above, like:
-        self.encoder = Encoder(...)
-        self.decoder = Decoder(...)
-        """
 
-        self.encoder=Encoder(input_size, latent_size, hidden_sizes_encoder, activation)
-        self.decoder=Decoder(latent_size, input_size, hidden_sizes_decoder, activation)
-        self.apply(init_weights)
+        act=nn.__getattribute__(activation)
+        
+        layers=[PatchEmbedding(input_size, in_channels, hidden_sizes[0], patch_size)]
+        for in_size, out_size in zip(hidden_sizes[:-1], hidden_sizes[1:]):
+            layers.append(nn.Linear(in_size, out_size))
+            if batchnorm: layers.append(nn.LayerNorm(out_size))
+            layers.append(act())
+            layers.append(nn.Dropout(p=0.2))
+
+        layers.append(nn.Linear(hidden_sizes[-1], 1))
+        layers.append(nn.Sigmoid())
+
+        self.layers=nn.Sequential(*layers)
+
+        # self.apply(init_weights)
 
     def forward(
-            self, 
-            y: torch.FloatTensor, # shape (batch_size, input_size),
-            ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]: # y_hat, mu, logvar
-        """
-        - forward pass of the encoder, get mu and logvar
-        - sample z from the output of the encoder
-        - forward pass of the decoder to get y_hat (reconstruction)
-        return y_hat, mu, logvar
-        """
-        mu, logvar=self.encoder(y)
-        std=torch.exp(0.5*logvar)
-        eps=torch.randn_like(std)
-        z=mu+eps*std
-
-        y_hat=self.decoder(z)
-
-        return y_hat, mu, logvar
-    
-    @torch.inference_mode()
-    def generate(
             self,
-            n_samples: int,
-            seed: int = 0,
-            device: str = 'cuda',
-            ) -> torch.FloatTensor: # shape (n_samples, input_size)
+            x: torch.FloatTensor, # (batch_size, input_size)
+            ) -> torch.FloatTensor: # (batch_size, 1)
         
-        torch.manual_seed(seed)
-        """
-        Set the decoder to evaluation mode and move it to the device.
-        sample from p(z) with the correct shape and device and dtype
-        decode them to generate new samples
-        """
-        
-        self.decoder.to(device)
-        self.decoder.eval()
-
-        z=torch.randn(n_samples, self.decoder.latent_size, device=device)
-
-        y_hat=self.decoder(z)
-        return y_hat
+        return self.layers(x)
     
 def init_weights(m):
     if isinstance(m, nn.Linear):
+        # nn.init.normal_(m.weight, 0.0, 0.02)
         nn.init.xavier_uniform_(m.weight)
         if m.bias is not None:
             nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.BatchNorm1d):
+        nn.init.normal_(m.weight, 1.0, 0.02)
+        # nn.init.xavier_uniform_(m.weight)
+        nn.init.zeros_(m.bias)

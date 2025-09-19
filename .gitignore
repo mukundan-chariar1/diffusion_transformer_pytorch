@@ -7,3 +7,5 @@ pdf/Scalable Diffusion Models with Transformers.pdf
 **/__pycache__/
 
 data/*
+
+autoencoder_v2.py
