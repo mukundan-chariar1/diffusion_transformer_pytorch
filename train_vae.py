@@ -42,7 +42,7 @@ def train_GAN(
     scheduler_G = getattr(lr_scheduler, lr_scheduler_name_G)(optimizer_G, **lr_scheduler_config_G) if lr_scheduler_name_G else None
     scheduler_D = getattr(lr_scheduler, lr_scheduler_name_D)(optimizer_D, **lr_scheduler_config_D) if lr_scheduler_name_D else None
 
-    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     
     iter_pbar = tqdm(range(n_iters), desc="Training", unit="iter")
     iter = 0
@@ -155,7 +155,7 @@ def train_VAE(
         plot_freq = plot_freq,
         )
 
-    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     optimizer = optim.__getattribute__(optimizer_name)(model.parameters(), **optimizer_config)
     if lr_scheduler_name is not None:
         scheduler = lr_scheduler.__getattribute__(lr_scheduler_name)(optimizer, **lr_scheduler_config)
