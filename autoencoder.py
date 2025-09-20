@@ -12,17 +12,17 @@ class ResBlock(nn.Module):
         act=nn.__getattribute__(activation)
         self.batchnorm=batchnorm
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
-                               stride=stride, padding=1)
-        if self.batchnorm: self.bn1   = nn.BatchNorm2d(out_channels)
+                               stride=stride, padding=1, bias=False)
+        if self.batchnorm: self.bn1   = nn.GroupNorm(num_groups=8, num_channels=out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
-                               stride=1, padding=1)
-        if self.batchnorm: self.bn2   = nn.BatchNorm2d(out_channels)
+                               stride=1, padding=1, bias=False)
+        if self.batchnorm: self.bn2   = nn.GroupNorm(num_groups=8, num_channels=out_channels)
         
         self.act=act()
         
         if stride != 1 or in_channels != out_channels:
             self.proj = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels),
             )
         else:
@@ -46,12 +46,12 @@ class UpResBlock(nn.Module):
         super().__init__()
         self.batchnorm=batchnorm
         act=nn.__getattribute__(activation)
-        if self.batchnorm: self.bn1 = nn.BatchNorm2d(in_channels)
+        if self.batchnorm: self.bn1 = nn.GroupNorm(num_groups=8, num_channels=in_channels)
         
-        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
-        if self.batchnorm: self.bn2 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.skip = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
+        self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False)
+        if self.batchnorm: self.bn2 = nn.GroupNorm(num_groups=8, num_channels=out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.skip = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False)
         
         self.act=act()
         

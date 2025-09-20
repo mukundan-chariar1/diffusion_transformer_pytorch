@@ -170,6 +170,10 @@ def train_VAE(
         beta=beta_start
         for y in train_loader:
 
+            import pdb; pdb.set_trace()
+
+
+
             y = y.to(device)
             optimizer.zero_grad()
             
@@ -180,11 +184,15 @@ def train_VAE(
             prior_loss = D_KL(mu, logvar)
             # loss = rec_loss+beta*prior_loss
 
-            loss=vae_loss(y_hat, y, mu, logvar, iter)
             # loss.backward()
+            # optimizer.step()
+
+            # tracker.update(rec_loss.item(), prior_loss.item(), loss.item())
+            loss, loss_dict=vae_loss(y_hat, y, mu, logvar, iter)
+            loss.backward()
             optimizer.step()
 
-            tracker.update(rec_loss.item(), prior_loss.item(), loss.item())
+            tracker.update(loss_dict['recon'].item(), loss_dict['kl'].item(), loss.item())
             running_avg_loss = np.mean(tracker.total_losses[-running_avg_window:])
         
             if lr_scheduler_name == 'ReduceLROnPlateau':
@@ -227,7 +235,7 @@ if __name__=="__main__":
                                           torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),)
     
-    generator=VAE(img_shape=img_size, activation='ReLU', base=64, num_layers=2).to('cuda')
+    generator=ResNetVAE(img_shape=img_size, activation='ReLU', base=64, num_layers=2).to('cuda')
     
     summary(generator, (3, *img_size))
 
@@ -242,9 +250,16 @@ if __name__=="__main__":
     train_VAE(generator, 
               train_dataset, 
               n_iters=500, 
-              beta=0.01, 
+              beta_start=0.01, 
               optimizer_name='Adam', 
-              optimizer_config=dict(lr=1e-4, weight_decay=1e-5,), 
+              optimizer_config={
+                                    "params": [
+                                        {"params": generator.encoder.parameters(), "lr": 2e-3},
+                                        {"params": generator.decoder.parameters(), "lr": 2e-3},
+                                    ],
+                                    "betas": (0.9, 0.999),
+                                    "weight_decay": 0.01,
+                                },
               lr_scheduler_name = 'ReduceLROnPlateau',
               lr_scheduler_config = dict(mode='min', factor=0.1, patience=10),
               rec_loss_fn=nn.MSELoss(reduction='mean'))

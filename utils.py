@@ -31,21 +31,17 @@ def sanity_check(dataset):
 
     fig.show()
     
-def sanity_check_tensor(dataset):
+def sanity_check_tensor(x):
     r, c=[5, 5]
     fig, ax=plt.subplots(r, c, figsize=(15, 15))
 
     k=0
-    for data in dataset:
-        x=data
-
-        for i in range(r):
-            for j in range(c):
-                img=x.detach().cpu().numpy().transpose(1, 2, 0)
-                ax[i, j].imshow(img)
-                ax[i, j].axis('off')
-                k+=1
-        break
+    for i in range(r):
+        for j in range(c):
+            img=x[k].detach().cpu().numpy().transpose(1, 2, 0)
+            ax[i, j].imshow(img)
+            ax[i, j].axis('off')
+            k+=1
 
     fig.show()
     
