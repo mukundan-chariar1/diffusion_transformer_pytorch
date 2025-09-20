@@ -94,7 +94,10 @@ class LatentEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x=self.body(x)
-        return self.mu_net(x), self.logvar_net(x) if self.variational else None
+        if self.variational:
+            return self.mu_net(x), self.logvar_net(x) 
+        else: 
+            return self.mu_net(x)
 
     def _init(self):
         for m in self.modules():
@@ -126,8 +129,8 @@ class LatentDecoder(nn.Module):
             c_in = ch_schedule[i]
             c_out = ch_schedule[i + 1]
             dec += [
-                UpResBlock(c_in, c_out, activation, batchnorm=True),
-                *[ResBlock(c_out, c_out, stride=1, activation=activation, batchnorm=True)]*num_layers
+                UpResBlock(c_in, c_out, activation, batchnorm=False),
+                *[ResBlock(c_out, c_out, stride=1, activation=activation, batchnorm=False)]*num_layers
             ]
         # final RGB head
         dec += [nn.Conv2d(ch_schedule[-1], out_ch, kernel_size=3, padding=1)]
@@ -194,18 +197,18 @@ class ResNetAE(nn.Module):
         
         self.latent_size=(self.latent_channels, *self.latent_shape)
         
-        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers, variational=False)
         self.decoder=LatentDecoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
         
     def encode(self, x):
-        mu, _ = self.encoder(x)
+        mu = self.encoder(x)
         return mu
     
     def decode(self, z):
         return self.decoder(z)
     
     def forward(self, x):
-        z, _ = self.encode(x)
+        z = self.encode(x)
         return self.decoder(z)
 
     def generate(self, n_samples):

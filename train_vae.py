@@ -3,6 +3,8 @@ import torchvision
 from torch import nn, optim
 from torch.optim import lr_scheduler
 
+import lpips
+
 from torchsummary import summary
 
 from tqdm import tqdm
@@ -136,8 +138,9 @@ def train_VAE(
         train_dataset,
         device = 'cuda',
         plot_freq: int = 100,
-
-        beta_start: float = 1.,
+        alpha=100000, 
+        beta: float = 1.,
+        gamma=0.5,
         rec_loss_fn: nn.Module = nn.MSELoss(),
         optimizer_name: str = 'Adam',
         optimizer_config: dict = dict(),
@@ -149,7 +152,8 @@ def train_VAE(
         variational: bool=False
         ):
 
-    assert beta_start >= 0
+    assert beta >= 0
+    assert alpha>=0
     
     model.train().to(device)
 
@@ -157,6 +161,8 @@ def train_VAE(
         n_iters = n_iters, 
         plot_freq = plot_freq,
         )
+    
+    lpips_fn=lpips.LPIPS(net='alex')
 
     train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     optimizer = optim.__getattribute__(optimizer_name)(**optimizer_config)
@@ -167,8 +173,6 @@ def train_VAE(
     iter_pbar = tqdm(range(n_iters), desc='Iters', unit='iter', leave=True)
 
     while iter < n_iters:
-        # beta=min(beta_start, iter / 10_000)
-        beta=beta_start
         for y in train_loader:
             y = y.to(device)
             optimizer.zero_grad()
@@ -179,7 +183,8 @@ def train_VAE(
                 y_hat, mu, logvar = model(y)
                 rec_loss = rec_loss_fn(y_hat, y)
                 prior_loss = D_KL(mu, logvar)
-                loss = rec_loss+beta*prior_loss
+                lpips_loss=lpips_fn(y_hat, y)
+                loss = alpha*rec_loss+beta*prior_loss+gamma*lpips_loss
 
                 loss.backward()
                 optimizer.step()
@@ -204,7 +209,8 @@ def train_VAE(
                     gen_samples = model.decode(z_sample)
                 tracker.get_samples(gen_samples)
 
-            iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}, L_prior: {prior_loss.item():.6f}, L_total: {loss.item():.6f}')
+            if variational: iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}, L_prior: {prior_loss.item():.6f}, L_total: {loss.item():.6f}')
+            else: iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}')
             iter_pbar.update(1)
             iter += 1
             if iter >= n_iters:
@@ -232,7 +238,7 @@ if __name__=="__main__":
                                           torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),)
     
-    generator=ResNetVAE(img_shape=img_size, activation='ReLU', base=64, num_layers=2).to('cuda')
+    generator=ResNetAE(img_shape=img_size, activation='LeakyReLU', base=128, num_layers=3).to('cuda')
     
     summary(generator, (3, *img_size))
 

@@ -4,6 +4,8 @@ torchaudio
 
 torchsummary
 
+lpips
+
 opencv-contrib-python
 
 matplotlib
