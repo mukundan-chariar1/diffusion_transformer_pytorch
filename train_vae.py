@@ -162,7 +162,8 @@ def train_VAE(
         plot_freq = plot_freq,
         )
     
-    lpips_fn=lpips.LPIPS(net='alex')
+    lpips_fn=lpips.LPIPS(net='alex').to(device)
+    lpips_fn.eval()
 
     train_loader=torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     optimizer = optim.__getattribute__(optimizer_name)(**optimizer_config)
@@ -183,17 +184,21 @@ def train_VAE(
                 y_hat, mu, logvar = model(y)
                 rec_loss = rec_loss_fn(y_hat, y)
                 prior_loss = D_KL(mu, logvar)
-                lpips_loss=lpips_fn(y_hat, y)
+                lpips_loss=lpips_fn(y_hat, y).mean()
+
+                import pdb; pdb.set_trace()
+
+
                 loss = alpha*rec_loss+beta*prior_loss+gamma*lpips_loss
 
                 loss.backward()
                 optimizer.step()
 
-                tracker.update(rec_loss.item(), prior_loss.item(), loss.item())
+                tracker.update(rec_loss.item(), prior_loss.item(), loss.item(), lpips_loss.item())
             else: 
                 y_hat=model(y)
                 rec_loss = rec_loss_fn(y_hat, y)
-                tracker.update(rec_loss.item(), 0, rec_loss.item())
+                tracker.update(rec_loss.item(), 0, rec_loss.item(), 0)
             
             running_avg_loss = np.mean(tracker.total_losses[-running_avg_window:])
         
@@ -209,7 +214,7 @@ def train_VAE(
                     gen_samples = model.decode(z_sample)
                 tracker.get_samples(gen_samples)
 
-            if variational: iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}, L_prior: {prior_loss.item():.6f}, L_total: {loss.item():.6f}')
+            if variational: iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}, L_prior: {prior_loss.item():.6f}, L_total: {loss.item():.6f}, LPIPS: {lpips_loss.item():.6f}')
             else: iter_pbar.set_postfix_str(f'L_rec: {rec_loss.item():.6f}')
             iter_pbar.update(1)
             iter += 1
@@ -238,7 +243,7 @@ if __name__=="__main__":
                                           torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),)
     
-    generator=ResNetAE(img_shape=img_size, activation='LeakyReLU', base=128, num_layers=3).to('cuda')
+    generator=ResNetAE(img_shape=img_size, activation='LeakyReLU', base=64, num_layers=1).to('cuda')
     
     summary(generator, (3, *img_size))
 
@@ -253,7 +258,7 @@ if __name__=="__main__":
     train_VAE(generator, 
               train_dataset, 
               n_iters=500, 
-              beta_start=0.01, 
+              beta=0.01, 
               optimizer_name='Adam', 
               optimizer_config={
                                     "params": [

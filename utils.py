@@ -387,6 +387,7 @@ class VAE_Tracker:
         self.rec_losses = []
         self.prior_losses = []
         self.total_losses = []
+        self.lpips_loss=[]
         self.plot = plot_freq is not None
         self.iter = 0
         self.n_iters = n_iters
@@ -421,6 +422,11 @@ class VAE_Tracker:
             self.total_losses,
 			label = 'Total Loss',
             )
+        self.lpips_loss_curve, = self.ax1.plot(
+            range(1, self.iter+1),
+            self.total_losses,
+			label = 'LPIPS Loss',
+            )
         self.ax1.set_xlim(0, self.n_iters+1)
         # self.ax1.set_ylim(0, 0.002)
         self.ax1.set_xlabel('Iteration')
@@ -432,7 +438,7 @@ class VAE_Tracker:
         self.ax2.set_xlim(0, self.n_iters+1)
         self.ax2.set_xlabel('Iteration')
         self.ax2.set_ylabel('Loss')
-        self.ax2.set_title('Prior Loss Learning Curve')
+        self.ax2.set_title('Prior Loss and LPIPS loss Learning Curve')
         self.ax2.grid(linestyle='--')
 
 
@@ -441,10 +447,12 @@ class VAE_Tracker:
             rec_loss: float,
             prior_loss: float,
             total_loss: float,
+            lpips_loss: float,
             ):
         self.rec_losses.append(rec_loss)
         self.prior_losses.append(prior_loss)
         self.total_losses.append(total_loss)
+        self.lpips_loss.append(lpips_loss)
         self.iter += 1
 		
         if self.plot_freq > 0 and self.iter % self.plot_freq == 0:
@@ -453,6 +461,7 @@ class VAE_Tracker:
             self.rec_loss_curve.set_data(range(1, self.iter+1), self.rec_losses)
             self.prior_loss_curve.set_data(range(1, self.iter+1), self.prior_losses)
             self.total_loss_curve.set_data(range(1, self.iter+1), self.total_losses)
+            self.lpips_loss_curve.set_data(range(1, self.iter+1), self.lpips_loss)
             self.ax1.relim()
             self.ax1.autoscale_view()
             self.ax1.set_ylim(bottom=0.0, top=None)
