@@ -46,11 +46,11 @@ class UpResBlock(nn.Module):
         super().__init__()
         self.batchnorm=batchnorm
         act=nn.__getattribute__(activation)
-        if self.batchnorm: self.bn1 = nn.GroupNorm(num_groups=8, num_channels=in_channels)
         
         self.deconv1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False)
-        if self.batchnorm: self.bn2 = nn.GroupNorm(num_groups=8, num_channels=out_channels)
+        if self.batchnorm: self.bn1 = nn.GroupNorm(num_groups=8, num_channels=out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        if self.batchnorm: self.bn2 = nn.GroupNorm(num_groups=8, num_channels=out_channels)
         self.skip = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False)
         
         self.act=act()
@@ -70,9 +70,10 @@ class UpResBlock(nn.Module):
         return out
     
 class LatentEncoder(nn.Module):
-    def __init__(self, in_ch: int = 3, img_shape: tuple = (256, 256), base: int = 64, z_ch: int = 4, activation: str='ReLU', num_layers: int=2):
+    def __init__(self, in_ch: int = 3, img_shape: tuple = (256, 256), base: int = 64, z_ch: int = 4, activation: str='ReLU', num_layers: int=2, variational: bool=False):
         super().__init__()
         act=nn.__getattribute__(activation)
+        self.variational=variational
         ratio = img_shape[0] // 32
         assert (ratio & (ratio - 1)) == 0, "img_shape/32 must be a power of 2"
 
@@ -87,13 +88,13 @@ class LatentEncoder(nn.Module):
         
         self.body = nn.Sequential(*layers)
         self.mu_net = nn.Conv2d(ch, z_ch, 1)
-        self.logvar_net = nn.Conv2d(ch, z_ch, 1)
+        if variational: self.logvar_net = nn.Conv2d(ch, z_ch, 1)
         
         # self._init()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x=self.body(x)
-        return self.mu_net(x), self.logvar_net(x)
+        return self.mu_net(x), self.logvar_net(x) if self.variational else None
 
     def _init(self):
         for m in self.modules():
@@ -125,8 +126,8 @@ class LatentDecoder(nn.Module):
             c_in = ch_schedule[i]
             c_out = ch_schedule[i + 1]
             dec += [
-                UpResBlock(c_in, c_out, activation, batchnorm=False),
-                *[ResBlock(c_out, c_out, stride=1, activation=activation, batchnorm=False)]*num_layers
+                UpResBlock(c_in, c_out, activation, batchnorm=True),
+                *[ResBlock(c_out, c_out, stride=1, activation=activation, batchnorm=True)]*num_layers
             ]
         # final RGB head
         dec += [nn.Conv2d(ch_schedule[-1], out_ch, kernel_size=3, padding=1)]
@@ -159,7 +160,7 @@ class ResNetVAE(nn.Module):
         
         self.latent_size=(self.latent_channels, *self.latent_shape)
         
-        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers, variational=True)
         self.decoder=LatentDecoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
         
     def encode(self, x):
@@ -178,6 +179,34 @@ class ResNetVAE(nn.Module):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         return self.decoder(z), mu, logvar
+
+    def generate(self, n_samples):
+        z = torch.randn(n_samples, *(self.latent_channels, *self.latent_shape))
+        return self.decoder(z)
+    
+class ResNetAE(nn.Module):
+    def __init__(self, img_shape: tuple=(256, 256), latent_shape: tuple=(32, 32), in_channels: int=3, latent_channels: int=4, activation: str='ReLU', base: int=64, num_layers: int=2):
+        super().__init__()
+        self.img_shape=img_shape
+        self.latent_shape=latent_shape
+        self.in_channels=in_channels
+        self.latent_channels=latent_channels
+        
+        self.latent_size=(self.latent_channels, *self.latent_shape)
+        
+        self.encoder=LatentEncoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        self.decoder=LatentDecoder(in_channels, img_shape, z_ch=latent_channels, activation=activation, base=base, num_layers=num_layers)
+        
+    def encode(self, x):
+        mu, _ = self.encoder(x)
+        return mu
+    
+    def decode(self, z):
+        return self.decoder(z)
+    
+    def forward(self, x):
+        z, _ = self.encode(x)
+        return self.decoder(z)
 
     def generate(self, n_samples):
         z = torch.randn(n_samples, *(self.latent_channels, *self.latent_shape))

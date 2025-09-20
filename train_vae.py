@@ -146,6 +146,7 @@ def train_VAE(
         running_avg_window: int = 20,
         n_iters: int = 1000,
         batch_size: int = 64,
+        variational: bool=False
         ):
 
     assert beta_start >= 0
@@ -169,30 +170,26 @@ def train_VAE(
         # beta=min(beta_start, iter / 10_000)
         beta=beta_start
         for y in train_loader:
-
-            import pdb; pdb.set_trace()
-
-
-
             y = y.to(device)
             optimizer.zero_grad()
             
             # Implement forward pass and calculate the loss terms
             # NotImplemented
-            y_hat, mu, logvar = model(y)
-            rec_loss = rec_loss_fn(y_hat, y)
-            prior_loss = D_KL(mu, logvar)
-            # loss = rec_loss+beta*prior_loss
+            if variational:
+                y_hat, mu, logvar = model(y)
+                rec_loss = rec_loss_fn(y_hat, y)
+                prior_loss = D_KL(mu, logvar)
+                loss = rec_loss+beta*prior_loss
 
-            # loss.backward()
-            # optimizer.step()
+                loss.backward()
+                optimizer.step()
 
-            # tracker.update(rec_loss.item(), prior_loss.item(), loss.item())
-            loss, loss_dict=vae_loss(y_hat, y, mu, logvar, iter)
-            loss.backward()
-            optimizer.step()
-
-            tracker.update(loss_dict['recon'].item(), loss_dict['kl'].item(), loss.item())
+                tracker.update(rec_loss.item(), prior_loss.item(), loss.item())
+            else: 
+                y_hat=model(y)
+                rec_loss = rec_loss_fn(y_hat, y)
+                tracker.update(rec_loss.item(), 0, rec_loss.item())
+            
             running_avg_loss = np.mean(tracker.total_losses[-running_avg_window:])
         
             if lr_scheduler_name == 'ReduceLROnPlateau':
