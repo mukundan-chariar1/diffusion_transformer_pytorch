@@ -35,6 +35,7 @@ def train_GAN(
     recon_weight=1.0,
     kl_weight=0.01,
     adv_weight=0.001,
+    lpips_weight=1,
 ):
     generator.to(device)
     discriminator.to(device)
@@ -50,6 +51,9 @@ def train_GAN(
     
     iter_pbar = tqdm(range(n_iters), desc="Training", unit="iter")
     iter = 0
+    
+    lpips_fn=lpips.LPIPS(net='alex').to(device)
+    lpips_fn.eval()
 
     while iter < n_iters:
         for x_real in train_loader:
@@ -90,10 +94,11 @@ def train_GAN(
             x_recon, mu, logvar = generator(x_real)
             recon_loss = F.mse_loss(x_recon, x_real)
             kl_loss = D_KL(mu, logvar)
+            lpips_loss=lpips_fn(x_recon, x_real).mean()
             d_recon = discriminator(x_recon)
             adv_loss = G_loss_fn(d_recon)
 
-            total_loss = recon_weight * recon_loss + kl_weight * kl_loss + adv_weight * adv_loss
+            total_loss = recon_weight * recon_loss + kl_weight * kl_loss + adv_weight * adv_loss + lpips_weight * lpips_loss
             total_loss.backward()
             optimizer_G.step()
 
@@ -119,6 +124,7 @@ def train_GAN(
                 G_loss=total_loss.item(),
                 recon_loss=recon_loss.item(),
                 kl_loss=kl_loss.item(),
+                lpips_loss=lpips_loss.item(),
                 x_real=sample_real.unsqueeze(0),
                 x_recon=sample_recon.unsqueeze(0),
             )
@@ -149,11 +155,13 @@ def train_VAE(
         running_avg_window: int = 20,
         n_iters: int = 1000,
         batch_size: int = 64,
-        variational: bool=False
+        variational: bool=False,
+        eps: float=1e-4
         ):
 
     assert beta >= 0
     assert alpha>=0
+    assert gamma>=0
     
     model.train().to(device)
 
@@ -185,10 +193,7 @@ def train_VAE(
                 rec_loss = rec_loss_fn(y_hat, y)
                 prior_loss = D_KL(mu, logvar)
                 lpips_loss=lpips_fn(y_hat, y).mean()
-
-                import pdb; pdb.set_trace()
-
-
+                tv_loss=total_variation(y_hat)
                 loss = alpha*rec_loss+beta*prior_loss+gamma*lpips_loss
 
                 loss.backward()
@@ -220,6 +225,8 @@ def train_VAE(
             iter += 1
             if iter >= n_iters:
                 break
+            if iter%100==0:
+                beta=beta+eps
             
     tracker.close()
             
@@ -243,34 +250,49 @@ if __name__=="__main__":
                                           torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
                                           torchvision.transforms.ToTensor(),])),)
     
-    generator=ResNetAE(img_shape=img_size, activation='LeakyReLU', base=64, num_layers=1).to('cuda')
+    generator=ResNetVAE(img_shape=img_size, activation='LeakyReLU', base=32, num_layers=1).to('cuda')
+    discriminator=Discriminator(input_size=img_size, hidden_sizes=[64, 64, 64], patch_size=8).to('cuda')
     
     summary(generator, (3, *img_size))
+    summary(discriminator, (3, *img_size))
 
     import pdb; pdb.set_trace()
+    
+    
+    train_GAN(
+            generator, 
+            discriminator, 
+            train_dataset, 
+            n_iters=100, 
+            
+            # Generator
+            optimizer_name_G = 'Adam',
+            optimizer_config_G = dict(lr=1e-3, weight_decay=1e-5,),
+            lr_scheduler_name_G = None, #'CosineAnnealingLR',
+            lr_scheduler_config_G = dict(T_max=50000, eta_min=1e-5, last_epoch=-1),
 
+            # Discriminator
+            optimizer_name_D = 'Adam',
+            optimizer_config_D = dict(lr=5e-4, weight_decay=1e-5,),
+            lr_scheduler_name_D = None, #'CosineAnnealingLR',
+            lr_scheduler_config_D = dict(T_max=50000, eta_min=1e-5, last_epoch=-1),)
     
-
-    # discriminator=Discriminator(input_size=img_size, hidden_sizes=[64, 64, 64])
-    
-    # train_GAN(generator, discriminator, train_dataset, n_iters=100)
-    
-    train_VAE(generator, 
-              train_dataset, 
-              n_iters=500, 
-              beta=0.01, 
-              optimizer_name='Adam', 
-              optimizer_config={
-                                    "params": [
-                                        {"params": generator.encoder.parameters(), "lr": 2e-3},
-                                        {"params": generator.decoder.parameters(), "lr": 2e-3},
-                                    ],
-                                    "betas": (0.9, 0.999),
-                                    "weight_decay": 0.01,
-                                },
-              lr_scheduler_name = 'ReduceLROnPlateau',
-              lr_scheduler_config = dict(mode='min', factor=0.1, patience=10),
-              rec_loss_fn=nn.MSELoss(reduction='mean'))
+    # train_VAE(generator, 
+    #           train_dataset, 
+    #           n_iters=500, 
+    #           beta=0.01, 
+    #           optimizer_name='Adam', 
+    #           optimizer_config={
+    #                                 "params": [
+    #                                     {"params": generator.encoder.parameters(), "lr": 2e-3},
+    #                                     {"params": generator.decoder.parameters(), "lr": 2e-3},
+    #                                 ],
+    #                                 "betas": (0.9, 0.999),
+    #                                 "weight_decay": 0.01,
+    #                             },
+    #           lr_scheduler_name = 'ReduceLROnPlateau',
+    #           lr_scheduler_config = dict(mode='min', factor=0.1, patience=10),
+    #           rec_loss_fn=nn.MSELoss(reduction='mean'))
     
     z_sample = torch.randn(25, *generator.latent_size, device='cuda')
     gen_samples = generator.decode(z_sample)

@@ -66,3 +66,8 @@ def vae_loss(x_recon, x_real, mu, logvar, step, kl_max=1e-2, warmup=10000, sigma
     var  = torch.exp(logvar)
     kl   = 0.5 * torch.mean(var + mu**2 - 1.0 - logvar)
     return recon + beta * kl, dict(recon=recon.detach(), kl=(beta*kl).detach(), beta=beta)
+
+def total_variation(x):
+    tv_h = (x[:, :, 1:, :] - x[:, :, :-1, :]).abs().mean()
+    tv_w = (x[:, :, :, 1:] - x[:, :, :, :-1]).abs().mean()
+    return tv_h + tv_w

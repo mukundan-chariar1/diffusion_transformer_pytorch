@@ -143,7 +143,7 @@ def train_via_iter(
 if __name__=="__main__":
     DATA_DIR="data"  
     
-    img_size=(256, 256)
+    img_size=(32, 32)
 
     train_transforms=torchvision.transforms.Compose([
         torchvision.transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True),
@@ -160,28 +160,22 @@ if __name__=="__main__":
                                           torchvision.transforms.ToTensor(),])),)
     
     model=DiT(
-        img_shape=img_size, 
-        patch_size=8,
-        n_layers=6, 
+        input_size=img_size, 
+        patch_size=4,
+        num_layers=12, 
         embed_dim=128, 
         num_heads=4,
-        T=500, 
+        T=100, 
         b_0=1e-4,
         b_T=2e-2,
-        t_embed_dim=128, 
-        hidden_units=128,
-        drop_rate=0.0, 
-        attn_drop_rate=0.0, 
-        drop_path_rate=0.0,
+        hidden_dim=128,
         in_chans=3, 
-        learned_pos_embed=False, 
-        bias=False
         )
     
     train_via_iter(
         model, 
         train_dataset, 
-        n_iters=1000, 
+        n_iters=2000, 
         plot_freq=100, 
         optimizer_name='AdamW', 
         optimizer_config={"lr": 1e-4, "weight_decay": 1e-6},

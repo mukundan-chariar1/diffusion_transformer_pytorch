@@ -268,6 +268,7 @@ class VAEGAN_Tracker(GAN_Tracker):
         # Additional VAEGAN metrics
         self.recon_losses = []
         self.kl_losses = []
+        self.lpips_losses=[]
 
         if self.plot:
             self.plot_freq = plot_freq
@@ -287,6 +288,7 @@ class VAEGAN_Tracker(GAN_Tracker):
             self.G_loss_curve, = self.ax2.plot([], [], label='G Loss')
             self.recon_loss_curve, = self.ax2.plot([], [], label='Reconstruction Loss')
             self.kl_loss_curve, = self.ax2.plot([], [], label='KL Loss')
+            self.lpips_loss_curve, = self.ax2.plot([], [], label='LPIPS Loss')
             self._setup_loss_plot()
 
             # Sample visualization
@@ -295,7 +297,7 @@ class VAEGAN_Tracker(GAN_Tracker):
             self.samples=[]
             for ax in self.sample_axes:
                 ax.axis('off')
-                self.samples.append(ax.imshow(np.zeros((32, 32)), cmap='gray', vmin=0, vmax=1))
+                self.samples.append(ax.imshow(np.zeros((256, 256, 3)), vmin=0, vmax=1))
 
     def _setup_score_plot(self):
         """Configures discriminator score subplot."""
@@ -324,6 +326,7 @@ class VAEGAN_Tracker(GAN_Tracker):
             G_loss: float,
             recon_loss: float,
             kl_loss: float,
+            lpips_loss: float,
             x_real: torch.Tensor = None,
             x_recon: torch.Tensor = None
     ):
@@ -337,6 +340,7 @@ class VAEGAN_Tracker(GAN_Tracker):
         self.G_losses.append(G_loss)
         self.recon_losses.append(recon_loss)
         self.kl_losses.append(kl_loss)
+        self.lpips_losses.append(lpips_loss)
 
         self.iter += 1
 
@@ -352,6 +356,7 @@ class VAEGAN_Tracker(GAN_Tracker):
             self.G_loss_curve.set_data(range(1, self.iter + 1), self.G_losses)
             self.recon_loss_curve.set_data(range(1, self.iter + 1), self.recon_losses)
             self.kl_loss_curve.set_data(range(1, self.iter + 1), self.kl_losses)
+            self.lpips_loss_curve.set_data(range(1, self.iter+1), self.lpips_losses)
             self.ax2.relim()
             self.ax2.autoscale_view()
 

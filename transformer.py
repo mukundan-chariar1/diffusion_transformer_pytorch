@@ -10,6 +10,7 @@ from diffusion import *
 
 class Block(nn.Module):
     def __init__(self, hidden_dim: int=256, num_heads: int=6, attn_drop: float=0.0):
+        super().__init__()
         self.norm1=nn.LayerNorm(hidden_dim, eps=1e-6, elementwise_affine=False)
         self.attn=nn.MultiheadAttention(
             embed_dim=hidden_dim, num_heads=num_heads,
@@ -26,7 +27,7 @@ class Block(nn.Module):
         (pre_attn_shift, pre_attn_scale, post_attn_scale, pre_mlp_shift, pre_mlp_scale, post_mlp_scale)=self.adaLN(c).chunk(6, dim=1)
         out=x
         attn_norm_output=(self.norm1(out)*(1+pre_attn_scale.unsqueeze(1))+pre_attn_shift.unsqueeze(1))
-        out=out+post_attn_scale.unsqueeze(1)*self.attn_block(attn_norm_output)
+        out=out+post_attn_scale.unsqueeze(1)*self.attn(attn_norm_output, attn_norm_output, attn_norm_output)[0]
         mlp_norm_output=(self.norm2(out)* (1+pre_mlp_scale.unsqueeze(1))+pre_mlp_shift.unsqueeze(1))
         out=out+post_mlp_scale.unsqueeze(1)*self.mlp(mlp_norm_output)
         
