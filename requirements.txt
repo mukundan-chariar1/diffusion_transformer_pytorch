@@ -1,0 +1,18 @@
+torch #==2.4.0
+torchvision
+torchaudio
+
+torchsummary
+diffusers
+accelerate
+
+lpips
+
+clean-fid
+
+opencv-contrib-python
+
+matplotlib
+seaborn
+
+tqdm
