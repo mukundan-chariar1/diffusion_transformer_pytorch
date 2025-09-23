@@ -66,3 +66,8 @@ See sample_pretrained.ipynb
 
 - The task can be accessed at: https://drive.google.com/file/d/19MkvLjCpPWWO7XZIv_kmRJLsEvBhEDdN/view?usp=sharing
 - The report can be accessed at: https://drive.google.com/file/d/1NpW-gkCOf_7wSMLW-J-Ckjt3OPAwXJtE/view?usp=sharing
+
+### Generated samples
+
+- Download CFG samples from: https://drive.google.com/file/d/1HLCaP7cPxWFl16z3K6zf7QdBwvjR5ZP5/view?usp=sharing
+- Download DDIM samples from: https://drive.google.com/file/d/16S2epTAo6lWMoL0_HEE_Zap_nQWsHe3F/view?usp=sharing
