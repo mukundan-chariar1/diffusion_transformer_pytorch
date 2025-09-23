@@ -62,3 +62,7 @@ See train.ipynb
 
 See sample_pretrained.ipynb
 
+### Task and Report
+
+- The task can be accessed at: https://drive.google.com/file/d/19MkvLjCpPWWO7XZIv_kmRJLsEvBhEDdN/view?usp=sharing
+- The report can be accessed at: https://drive.google.com/file/d/1NpW-gkCOf_7wSMLW-J-Ckjt3OPAwXJtE/view?usp=sharing
